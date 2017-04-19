@@ -21,8 +21,8 @@ depends: [
   "yojson"
   "result"
   "ppx_deriving" {>= "4.0" & < "5.0"}
+  "ocaml-migrate-parsetree"
   "ocamlfind"    {build}
-  "cppo"         {build}
   "ounit"        {test}
   "ppx_import"   {test & >= "1.1"}
 ]

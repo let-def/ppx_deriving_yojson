@@ -1,10 +1,5 @@
-#if OCAML_VERSION < (4, 03, 0)
-#define Type_Nonrecursive
-#define Pconst_string Const_string
-#define Pcstr_tuple(x) x
-#else
-#define Type_Nonrecursive Nonrecursive
-#endif
+open Ast_405
+open Ppx_tools_405
 
 open Longident
 open Location
@@ -260,7 +255,8 @@ let ser_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
       let polymorphize_ser  = Ppx_deriving.poly_arrow_of_type_decl
         (fun var -> [%type: [%t var] -> Yojson.Safe.json]) type_decl
       in
-      let ty = Typ.poly poly_vars (polymorphize_ser [%type: [%t typ] -> Yojson.Safe.json]) in
+      let ty = Typ.poly (List.map Location.mknoloc poly_vars)
+          (polymorphize_ser [%type: [%t typ] -> Yojson.Safe.json]) in
       let default_fun =
         let type_path = String.concat "." (path @ [type_decl.ptype_name.txt]) in
         let e_type_path = Exp.constant (Pconst_string (type_path, None)) in
@@ -270,7 +266,7 @@ let ser_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
       in
       let poly_fun = polymorphize default_fun in
       let poly_fun =
-        (Ppx_deriving.fold_left_type_decl (fun exp name -> Exp.newtype name exp) poly_fun type_decl)
+        (Ppx_deriving.fold_left_type_decl (fun exp name -> Exp.newtype (Location.mknoloc name) exp) poly_fun type_decl)
       in
       let mod_name = "M_"^to_yojson_name in
       let typ = Type.mk ~kind:(Ptype_record [Type.field ~mut:Mutable (mknoloc "f") ty])
@@ -282,7 +278,7 @@ let ser_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
       let mod_ =
         Str.module_ (Mb.mk (mknoloc mod_name)
                     (Mod.structure [
-          Str.type_ Type_Nonrecursive [typ];
+          Str.type_ Nonrecursive [typ];
           Str.value Nonrecursive [record];
         ]))
       in
@@ -310,10 +306,8 @@ let ser_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
             Exp.case
               (pconstr name' (List.mapi (fun i _ -> pvar (argn i)) args))
               [%expr `List ((`String [%e str json_name]) :: [%e list arg_exprs])]
-#if OCAML_VERSION >= (4, 03, 0)
           | Pcstr_record _ ->
             raise_errorf ~loc "%s: record variants are not supported" deriver
-#endif
           )
         |> Exp.function_
       | Ptype_record labels, _ ->
@@ -337,7 +331,7 @@ let ser_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
         raise_errorf ~loc "%s cannot be derived for fully abstract types" deriver
     in
     let ty = ser_type_of_decl ~options ~path type_decl in
-    let fv = Ppx_deriving.free_vars_in_core_type ty in
+    let fv = List.map Location.mknoloc (Ppx_deriving.free_vars_in_core_type ty) in
     let poly_type = Typ.force_poly @@ Typ.poly fv @@ ty in
     let var = pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_yojson") type_decl) in
     ([],
@@ -369,10 +363,8 @@ let ser_str_of_type_ext ~options ~path ({ ptyext_path = { loc }} as type_ext) =
               Exp.case
                 (pconstr name' (List.mapi (fun i _ -> pvar (argn i)) args))
                 [%expr `List ((`String [%e str json_name]) :: [%e list arg_exprs])]
-#if OCAML_VERSION >= (4, 03, 0)
             | Pcstr_record _ ->
               raise_errorf ~loc "%s: record variants are not supported" deriver
-#endif
           in
           case :: acc_cases) type_ext.ptyext_constructors []
     in
@@ -435,13 +427,13 @@ let desu_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
       in
       let polymorphize_desu = Ppx_deriving.poly_arrow_of_type_decl
         (fun var -> [%type: Yojson.Safe.json -> [%t error_or var]]) type_decl in
-      let ty = Typ.poly poly_vars
+      let ty = Typ.poly (List.map Location.mknoloc poly_vars)
         (polymorphize_desu [%type: Yojson.Safe.json -> [%t error_or typ]])
       in
       let default_fun = Exp.function_ [Exp.case [%pat? _] top_error] in
       let poly_fun = polymorphize default_fun in
       let poly_fun =
-        (Ppx_deriving.fold_left_type_decl (fun exp name -> Exp.newtype name exp) poly_fun type_decl)
+        (Ppx_deriving.fold_left_type_decl (fun exp name -> Exp.newtype (Location.mknoloc name) exp) poly_fun type_decl)
       in
       let mod_name = "M_"^of_yojson_name in
       let typ = Type.mk ~kind:(Ptype_record [Type.field ~mut:Mutable (mknoloc "f") ty])
@@ -452,7 +444,7 @@ let desu_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
       let mod_ =
         Str.module_ (Mb.mk (mknoloc mod_name)
                     (Mod.structure [
-          Str.type_ Type_Nonrecursive [typ];
+          Str.type_ Nonrecursive [typ];
           Str.value Nonrecursive [record];
         ]))
       in
@@ -473,10 +465,8 @@ let desu_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
               [%pat? `List ((`String [%p pstr (attr_name name' pcd_attributes)]) ::
                                      [%p plist (List.mapi (fun i _ -> pvar (argn i)) args)])]
               (desu_fold ~path (fun x -> constr name' x) args)
-#if OCAML_VERSION >= (4, 03, 0)
           | Pcstr_record _ ->
             raise_errorf ~loc "%s: record variants are not supported" deriver
-#endif
           ) constrs
         in
         Exp.function_ (cases @ [Exp.case [%pat? _] top_error])
@@ -514,7 +504,7 @@ let desu_str_of_type ~options ~path ({ ptype_loc = loc } as type_decl) =
         raise_errorf ~loc "%s cannot be derived for fully abstract types" deriver
     in
     let ty = desu_type_of_decl ~options ~path type_decl in
-    let fv = Ppx_deriving.free_vars_in_core_type ty in
+    let fv = List.map Location.mknoloc (Ppx_deriving.free_vars_in_core_type ty) in
     let poly_type = Typ.force_poly @@ Typ.poly fv @@ ty in
     let var = pvar (Ppx_deriving.mangle_type_decl (`Suffix "of_yojson") type_decl) in
     ([],
@@ -539,10 +529,8 @@ let desu_str_of_type_ext ~options ~path ({ ptyext_path = { loc } } as type_ext) 
                 [%pat? `List ((`String [%p pstr (attr_name name' pext_attributes)]) ::
                                        [%p plist (List.mapi (fun i _ -> pvar (argn i)) args)])]
                 (desu_fold ~path (fun x -> constr name' x) args)
-#if OCAML_VERSION >= (4, 03, 0)
             | Pcstr_record _ ->
               raise_errorf ~loc "%s: record variants are not supported" deriver
-#endif
           in
           case :: acc_cases)
         type_ext.ptyext_constructors []
@@ -585,7 +573,8 @@ let ser_sig_of_type ~options ~path type_decl =
     let polymorphize_ser  = Ppx_deriving.poly_arrow_of_type_decl
       (fun var -> [%type: [%t var] -> Yojson.Safe.json]) type_decl
     in
-    let ty = Typ.poly poly_vars (polymorphize_ser [%type: [%t typ] -> Yojson.Safe.json]) in
+    let ty = Typ.poly (List.map Location.mknoloc poly_vars)
+        (polymorphize_ser [%type: [%t typ] -> Yojson.Safe.json]) in
     let typ = Type.mk ~kind:(Ptype_record
        [Type.field ~mut:Mutable (mknoloc "f") ty]) (mknoloc "t_to_yojson")
     in
@@ -593,7 +582,7 @@ let ser_sig_of_type ~options ~path type_decl =
     let mod_ =
       Sig.module_ (Md.mk (mknoloc mod_name)
                   (Mty.signature [
-        Sig.type_ Type_Nonrecursive [typ];
+        Sig.type_ Nonrecursive [typ];
         Sig.value record;
       ]))
     in
@@ -619,7 +608,7 @@ let desu_sig_of_type ~options ~path type_decl =
     let typ = Ppx_deriving.core_type_of_type_decl type_decl in
     let polymorphize_desu = Ppx_deriving.poly_arrow_of_type_decl
       (fun var -> [%type: Yojson.Safe.json -> [%t error_or var]]) type_decl in
-    let ty = Typ.poly poly_vars
+    let ty = Typ.poly (List.map Location.mknoloc poly_vars)
       (polymorphize_desu [%type: Yojson.Safe.json -> [%t error_or typ]])
     in
     let typ = Type.mk ~kind:(Ptype_record
@@ -629,7 +618,7 @@ let desu_sig_of_type ~options ~path type_decl =
     let mod_ =
       Sig.module_ (Md.mk (mknoloc mod_name)
                   (Mty.signature [
-        Sig.type_ Type_Nonrecursive [typ];
+        Sig.type_ Nonrecursive [typ];
         Sig.value record;
       ]))
     in

@@ -1,1 +1,1 @@
-PKG compiler-libs.common ppx_deriving.api ppx_import oUnit yojson result ppx_tools.metaquot
+PKG compiler-libs.common ppx_deriving.api ppx_import oUnit yojson result ppx_tools_versioned.metaquot_405
